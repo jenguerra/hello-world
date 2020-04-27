@@ -1,0 +1,173 @@
+title: "Rock Dove Project "
+output: html_notebook
+---
+```{r}
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+setwd("~/Desktop")
+daylength<-read.csv("avg_daylength.csv")
+```
+
+```{r}
+ggplot4<- ggplot(daylength, aes(x=(month), y=mean_daylength, fill=as.factor(year)))+
+  geom_bar(stat ="identity", position = position_dodge(0.9))+ 
+  theme_classic()+
+  ggtitle("Average Daylength per Month and Year") +
+  labs(x="Month", y="Average Daylength") +
+ scale_x_continuous(breaks = c(1:12), labels = c("J","F","M","A","M","J","J","A", "S", "O", "N", "D") , name= "Years")
+ggplot4
+
+
+ggplot3<-ggplot(daylength, aes(x = month, y = mean_daylength, color = as.factor(year))) +
+  geom_line(stat = "identity", position = position_dodge(0.9)) +
+  scale_x_continuous(breaks = c(1:12), labels = c("J","F","M","A","M","J","J","A", "S", "O", "N", "D"))+ #month breaks and labels 
+  labs(title = "Total Monthly Daylength - Davis, CA",
+       subtitle = "Data plotted by year",
+       y = "Total Daylength",
+       x = "Month") + theme_bw(base_size = 15) 
+ ggplot3 + guides(fill = guide_legend(title = "Year"))
+
+ggplot3
+
+  
+```
+
+```{r "Chicks"}
+chx<-read.csv("~/Desktop/fullsummary_complete.csv") #change this back to yours :) 
+chx$NumChicksHatched <-sub("^$", "0", chx$NumChicksHatched) #changes nothing to 0. 
+chx$NumChicksHatched <-as.numeric(chx$NumChicksHatched) #change to numeric
+
+#selected only columns you cared about and then filtered out the extreme chick values (like 12! makes no sense)
+chx <- chx %>%
+  select(d_FirstEgg, d_FirstFledge, d_FirstHatch, d_SecondHatch, NumEggsLaid, NumChicksFledged, NumChicksHatched) %>%
+  filter(NumChicksHatched < 4)
+  
+chx$d_FirstHatch<-as.Date(chx$d_FirstHatch, format="%m/%d/%Y") #lubridate now works
+
+chx <- chx %>%
+  mutate(hatch_year = year(d_FirstHatch),
+         hatch_month = month(d_FirstHatch))
+
+#aggregate(NumChicksHatched~hatch_year,chx, sum, na.action = na.omit) 
+aggregate(NumChicksHatched~hatch_year,chx, length, na.action = na.omit) 
+
+Chicks_by_year<-aggregate(NumChicksHatched~hatch_year,chx, length, na.action = na.omit) 
+hatches_by_year<-aggregate(NumChicksHatched~hatch_year,chx, length, na.action = na.omit)  #these are the same... 
+total_chx <- chx %>% drop_na(hatch_year, NumChicksHatched)  %>% filter(between( hatch_year, 2016,2019)) %>% group_by(hatch_year, hatch_month) %>% summarise(totalchicks = sum(NumChicksHatched)) 
+total_chx
+```
+
+```{r "joining"}
+colnames(total_chx)
+colnames(daylength)
+colnames(total_chx)[1:2]<-c("year", "month")
+
+chx_daylength<- left_join(total_chx,daylength) 
+
+```
+```{r}
+chxs_daylength<-ggplot(chx_daylength, aes(x = month, y = mean_daylength, fill = as.factor(year))) +
+  geom_bar(aes( y= totalchicks, fill = as.factor(year)), stat = "identity", alpha= 0.5) +
+  geom_line(aes(colour = as.factor(year)), alpha=0.5) +
+  geom_point(aes(colour=as.factor(year)), alpha =0.5) +
+  scale_x_continuous(breaks = c(1:12), labels = c("J","F","M","A","M","J","J","A", "S", "O", "N", "D")) +
+  labs(title = "Total Chicks Hatched per Daylength - Davis, CA",
+       subtitle = " Bars are Total Chicks Hatched",
+       y = "Average Daylength", x = "Month") +
+  guides(fill = guide_legend(title = "Year")) +
+  theme_bw(base_size = 15) +
+  facet_wrap(vars(year), ncol=2) 
+  
+chxs_daylength
+```
+
+```{r "chicks_daylength"}
+ggplot(chx_daylength, aes(x = mean_daylength, y = totalchicks))  + 
+  geom_point()+ 
+   labs(title = "Total Chicks per Daylength",
+       y="Total Chicks hatched", x="Daylength") +
+  geom_smooth(method = lm, color= "dodgerblue")
+
+
+```
+
+```{r}
+cor.test(chx_daylength$totalchicks, chx_daylength$mean_daylength, method = "pearson")
+cor.test(chx_daylength$totalchicks, chx_daylength$month, method = "pearson")
+cor.test(chx_daylength$totalchicks, chx_daylength$year, method = "pearson")
+```
+
+```{r}
+setwd("~/Desktop")
+WD<-read.csv("davis_weather_2016-19_complete_cleaned.csv")
+options(stringsAsFactors = FALSE)
+WD$date <- as.Date(as.character(WD$date), format = "%Y%m%d")
+weather_year_summary <- WD %>%
+  na.omit() %>%
+  mutate(month =month(date),
+         year = year(date)) %>%
+  group_by(year, month) %>%
+  summarise(avg_precip = mean(precip),
+            total_precip = sum(precip), 
+            avg_high = mean(air_max), 
+            ave_low = mean(air_min))
+
+colnames(total_chx)
+colnames(weather_year_summary)
+colnames(total_chx)[1:2]<-c("year", "month")
+
+chx_weather<- left_join(total_chx,weather_year_summary) 
+```
+
+```{r "chicks and weather gaph fro total precip"}
+chxweather<-ggplot(chx_weather, aes(x = month, y = total_precip, fill = as.factor(year))) +
+  geom_bar(aes( y= totalchicks, fill = as.factor(year)), stat = "identity", alpha= 0.5) +
+  geom_line(aes(colour =as.factor(year)), alpha=0.5) +
+  geom_point(aes(colour=as.factor(year)), alpha =0.5) +
+  scale_x_continuous(breaks = c(1:12), labels = c("J","F","M","A","M","J","J","A", "S", "O", "N", "D")) +
+  labs(title = "Total Chicks Hatched per Monthly Precipiation - Davis, CA",
+       subtitle = " Bars are Total Chicks Hatched",
+       y = "Average Precipitation", x = "Month") +
+  guides(fill = guide_legend(title = "Year")) +
+theme_bw(base_size = 15) +
+  facet_wrap(vars(year), ncol=2)
+chxweather
+```
+
+```{r "chicks and weather graph for temp"}
+chx_weather<-ggplot(chx_weather, aes(x = month, y = avg_high, fill = as.factor(year))) +
+  geom_bar(aes( y= totalchicks, fill = as.factor(year)), stat = "identity", alpha= 0.5) +
+  geom_line(aes(colour = as.factor(year)), alpha=0.5) +
+  geom_point(aes(colour=as.factor(year)), alpha =0.5) +
+  scale_x_continuous(breaks = c(1:12), labels = c("J","F","M","A","M","J","J","A", "S", "O", "N", "D")) +
+  labs(title = "Total Chicks Hatched per Monthly Temperature - Davis, CA",
+       subtitle = " Bars are Total Chicks Hatched",
+       y = "Average Temperature", x = "Month") +
+  guides(fill = guide_legend(title = "Year")) +
+theme_bw(base_size = 15) +
+  facet_wrap(vars(year), ncol=2)
+chx_weather
+
+```
+
+```{r" stats plots for chx"}
+ggplot(chx_weather, aes(x = avg_high, y = totalchicks)) +
+  geom_point()+ 
+  geom_smooth(method = lm, color = "dodgerblue") +
+labs(title = "Total Chicks per Temperature",
+       y="Total Chicks Hatched", x="Temperature") 
+```
+```{r "stats plot for chicks"}
+ggplot(chx_weather, aes(x = avg_precip, y = totalchicks)) +
+  geom_point()+ 
+  geom_smooth(method = lm, color = "dodgerblue") +
+labs(title = "Total Chicks per Precipitation",
+       y="Total Chicks Hatched", x="Precipitation") 
+```
+
+
+```{r}
+cor.test(chx_weather$totalchicks, chx_weather$total_precip, method = "pearson")
+cor.test(chx_weather$totalchicks, chx_weather$avg_high, method = "pearson")
